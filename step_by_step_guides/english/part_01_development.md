@@ -1,4 +1,4 @@
-# Part 1: Apache Spark in CDE
+# Part 1: Job Development
 
 * [A Brief Introduction to Spark](https://github.com/pdefusco/CDE_Banking_HOL_MKT/blob/main/step_by_step_guides/english/part_01_spark.md#a-brief-introduction-to-spark)
 * [Lab 1: Run PySpark Interactive Session](https://github.com/pdefusco/CDE_Banking_HOL_MKT/blob/main/step_by_step_guides/english/part_01_spark.md#lab-1-run-pyspark-interactive-session)
