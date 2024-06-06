@@ -106,4 +106,7 @@ distanceDf = distanceDf.filter(distanceDf.trx_dist_from_home > 100)
 #---------------------------------------------------
 
 distanceDf.show()
-distanceDf.writeTo("spark_catalog.HOL_DB_{0}.GOLD_TABLE_{0}".format(username)).using("iceberg").createOrReplace()
+
+gold_cols = ['transaction_amount', 'transaction_currency', 'transaction_type', 'trx_dist_from_home', 'name', 'email', 'bank_country', 'account_no']
+
+distanceDf.select(*gold_cols).writeTo("spark_catalog.HOL_DB_{0}.GOLD_TABLE_{0}".format(username)).using("iceberg").createOrReplace()
