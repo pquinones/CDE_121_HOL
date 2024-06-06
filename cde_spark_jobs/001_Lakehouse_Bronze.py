@@ -122,7 +122,7 @@ trxBatchDf.printSchema()
 #---------------------------------------------------
 
 # CREATE TABLE BRANCH
-spark.sql("ALTER TABLE spark_catalog.HOL_DB_{}.TRANSACTIONS_{} CREATE BRANCH ingestion_branch".format(username))
+spark.sql("ALTER TABLE spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0} CREATE BRANCH ingestion_branch".format(username))
 
 # WRITE DATA OPERATION ON TABLE BRANCH
 trxBatchDf.write.format("iceberg").option("branch", "ingestion_branch").mode("append").save("spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0}".format(username))
