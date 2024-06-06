@@ -42,6 +42,7 @@ import pyspark.sql.functions as F
 from pyspark.sql.types import *
 import sys, random, os, json, random, configparser
 from utils import *
+from great_expectations.dataset.sparkdf_dataset import SparkDFDataset
 
 spark = SparkSession \
     .builder \
@@ -56,42 +57,44 @@ print("Storage Location from Config File: ", storageLocation)
 username = sys.argv[1]
 print("PySpark Runtime Arg: ", sys.argv[1])
 
-##### Upsert Data into Branch with Iceberg Merge Into
+#---------------------------------------------------
+#               LOAD BATCH DATA FROM BRANCH
+#---------------------------------------------------
 
-# LOAD NEW TRANSACTION BATCH
-#batchDf = spark.read.csv("/app/mount/cell_towers_2.csv", header=True, inferSchema=True)
-batchDf = spark.read.json("{0}/mkthol/trans/{1}/trx_batch_2".format(storageLocation, username))
-batchDf.printSchema()
+trxBatchDf = spark.sql("SELECT COUNT(*) FROM spark_catalog.HOL_DB_{}.TRANSACTIONS_{} VERSION AS OF 'ingestion_branch';".format(username))
 
-# CREATE TABLE BRANCH
-spark.sql("ALTER TABLE spark_catalog.HOL_DB_{}.TRANSACTIONS_{} CREATE BRANCH ingestion_branch".format(username))
+#---------------------------------------------------
+#               VALIDATE BATCH DATA IN BRANCH
+#---------------------------------------------------
 
-# WRITE DATA OPERATION ON TABLE BRANCH
-batchDf.write.format("iceberg").option("branch", "ingestion_branch").mode("append").save("spark_catalog.HOL_DB_{}.TRANSACTIONS_{}".format(username))
+# validate the data quality of the sales data with great-expectations
 
-#Notice that a simple SELECT query against the table still returns the original data.
+geTrxBatchDf = SparkDFDataset(trxBatchDf)
 
-spark.sql("SELECT * FROM spark_catalog.HOL_DB_{}.TRANSACTIONS_{};".format(username)).show()
+geTrxBatchDfValidation = geTrxBatchDf.expect_compound_columns_to_be_unique(["credit_card_number", "credit_card_provider"])
 
-#If you want to access the data in the branch, you can specify the branch name in your SELECT query.
+print(f"VALIDATION RESULTS FOR TRANSACTION BATCH DATA:\n{geTrxBatchDfValidation}\n")
+assert geTrxBatchDfValidation.success, \
+    "VALIDATION FOR SALES TABLE UNSUCCESSFUL: FOUND DUPLICATES IN [credit_card_number, credit_card_provider]."
 
-spark.sql("SELECT * FROM spark_catalog.HOL_DB_{}.TRANSACTIONS_{} VERSION AS OF 'ingestion_branch';".format(username)).show()
+### MERGE INGESTION BRANCH INTO MAIN TABLE BRANCH
 
-### Cherrypicking Snapshots
-
-#The cherrypick_snapshot procedure creates a new snapshot incorporating the changes from another snapshot in a metadata-only operation (no new datafiles are created). To run the cherrypick_snapshot procedure you need to provide two parameters: the name of the table you’re updating as well as the ID of the snapshot the table should be updated based on. This transaction will return the snapshot IDs before and after the cherry-pick operation as source_snapshot_id and current_snapshot_id.
+#The cherrypick_snapshot procedure creates a new snapshot incorporating the changes from another snapshot in a metadata-only operation
+#(no new datafiles are created). To run the cherrypick_snapshot procedure you need to provide two parameters:
+#the name of the table you’re updating as well as the ID of the snapshot the table should be updated based on.
+#This transaction will return the snapshot IDs before and after the cherry-pick operation as source_snapshot_id and current_snapshot_id.
 #we will use the cherrypick operation to commit the changes to the table which were staged in the 'ingestion_branch' branch up until now.
 
 # SHOW PAST BRANCH SNAPSHOT ID'S
-spark.sql("SELECT * FROM spark_catalog.HOL_DB_{}.TRANSACTIONS_{}.refs;".format(username)).show()
+spark.sql("SELECT * FROM spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0}.refs;".format(username)).show()
 
 # SAVE THE SNAPSHOT ID CORRESPONDING TO THE CREATED BRANCH
-branchSnapshotId = spark.sql("SELECT snapshot_id FROM spark_catalog.HOL_DB_{}.TRANSACTIONS_{}.refs WHERE NAME == 'ingestion_branch';".format(username)).collect()[0][0]
+branchSnapshotId = spark.sql("SELECT snapshot_id FROM spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0}.refs WHERE NAME == 'ingestion_branch';".format(username)).collect()[0][0]
 
 # USE THE PROCEDURE TO CHERRY-PICK THE SNAPSHOT
 # THIS IMPLICITLY SETS THE CURRENT TABLE STATE TO THE STATE DEFINED BY THE CHOSEN PRIOR SNAPSHOT ID
-spark.sql("CALL spark_catalog.system.cherrypick_snapshot('spark_catalog.HOL_DB_{}.TRANSACTIONS_{}',{1})".format(username, branchSnapshotId))
+spark.sql("CALL spark_catalog.system.cherrypick_snapshot('spark_catalog.HOL_DB_{0}.TRANSACTIONS_{1}',{2})".format(username, username, branchSnapshotId))
 
 # VALIDATE THE CHANGES
 # THE TABLE ROW COUNT IN THE CURRENT TABLE STATE REFLECTS THE APPEND OPERATION - IT PREVIOSULY ONLY DID BY SELECTING THE BRANCH
-spark.sql("SELECT COUNT(*) FROM spark_catalog.HOL_DB_{}.TRANSACTIONS_{};".format(username)).show()
+spark.sql("SELECT COUNT(*) FROM spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0};".format(username)).show()

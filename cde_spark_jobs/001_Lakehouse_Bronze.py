@@ -56,28 +56,83 @@ print("Storage Location from Config File: ", storageLocation)
 username = sys.argv[1]
 print("PySpark Runtime Arg: ", sys.argv[1])
 
+#---------------------------------------------------
+#               CREATE PII TABLE
+#---------------------------------------------------
+
+### PII DIMENSION TABLE
+piiDf = spark.read.options(header='True', delimiter=',').csv("{0}/mkthol/pii/{1}/pii".format(storageLocation, username))
+
+### CAST LAT LON AS FLOAT
+piiDf = piiDf.withColumn("address_latitude",  piiDf["address_latitude"].cast('float'))
+piiDf = piiDf.withColumn("address_longitude",  piiDf["address_longitude"].cast('float'))
+
+### STORE CUSTOMER DATA AS TABLE
+piiDf.writeTo("spark_catalog.HOL_DB_{0}.CUST_TABLE_{0}".format(username)).createOrReplace()
+
+#---------------------------------------------------
+#               CREATE REFINED CUSTOMER TABLE
+#---------------------------------------------------
+
+spark.sql("DROP TABLE IF EXISTS spark_catalog.HOL_DB_{0}.CUST_TABLE_REFINED_{0}".format(username))
+
+spark.sql("""CREATE TABLE spark_catalog.HOL_DB_{0}.CUST_TABLE_REFINED_{0}
+                USING iceberg
+                AS SELECT NAME, EMAIL, BANK_COUNTRY, ACCOUNT_NO, CREDIT_CARD_NUMBER, ADDRESS_LATITUDE, ADDRESS_LONGITUDE
+                FROM spark_catalog.{0}.CUST_TABLE""".format(username))
+
+#---------------------------------------------------
+#               SCHEMA EVOLUTION
+#---------------------------------------------------
+
+# UPDATE TYPES: Updating Latitude and Longitude FROM FLOAT TO DOUBLE
+spark.sql("""ALTER TABLE spark_catalog.HOL_DB_{0}.CUST_TABLE_REFINED_{0}
+                ALTER COLUMN ADDRESS_LATITUDE TYPE double""".format(username))
+
+spark.sql("""ALTER TABLE spark_catalog.HOL_DB_{0}.CUST_TABLE_REFINED_{0}
+                ALTER COLUMN ADDRESS_LONGITUDE TYPE double""".format(username))
+
+#---------------------------------------------------
+#               VALIDATA TABLE
+#---------------------------------------------------
+
+spark.sql("""SELECT * FROM spark_catalog.HOL_DB_{0}.CUST_TABLE_REFINED_{0}""".format(username)).show()
+
+
+#---------------------------------------------------
+#               PROCESS BATCH DATA
+#---------------------------------------------------
+
 ### TRANSACTIONS FACT TABLE
+trxBatchDf = spark.read.json("{0}/mkthol/trans/{1}/trx_batch_2".format(storageLocation, username))
 
-transactionsDf = spark.read.json("{0}/mkthol/trans/{1}/rawtransactions".format(storageLocation, username))
-transactionsDf = transactionsDf.select(flatten_struct(transactionsDf.schema))
-transactionsDf.printSchema()
-
-### RENAME MULTIPLE COLUMNS
-cols = [col for col in transactionsDf.columns if col.startswith("transaction")]
-new_cols = [col.split(".")[1] for col in cols]
-transactionsDf = renameMultipleColumns(transactionsDf, cols, new_cols)
+### TRX DF SCHEMA BEFORE CASTING
+trxBatchDf.printSchema()
 
 ### CAST TYPES
 cols = ["transaction_amount", "latitude", "longitude"]
-transactionsDf = castMultipleColumns(transactionsDf, cols)
-transactionsDf = transactionsDf.withColumn("event_ts", transactionsDf["event_ts"].cast("timestamp"))
+transactionsDf = castMultipleColumns(trxBatchDf, cols)
+transactionsDf = trxBatchDf.withColumn("event_ts", trxBatchDf["event_ts"].cast("timestamp"))
 
-### TRX DF SCHEMA AFTER CASTING AND RENAMING
-transactionsDf.printSchema()
+### TRX DF SCHEMA AFTER CASTING
+trxBatchDf.printSchema()
 
-### STORE TRANSACTIONS AS TABLE
-spark.sql("DROP DATABASE IF EXISTS {} CASCADE".format(username))
-spark.sql("CREATE DATABASE IF NOT EXISTS {}".format(username))
-spark.sql("SHOW DATABASES LIKE '{}'".format(username)).show()
-#transactionsDf.write.mode("overwrite").saveAsTable('{}.TRX_TABLE'.format(username), format="parquet")
-transactionsDf.writeTo("spark_catalog.HOL_DB_{}.TRANSACTIONS_{}".format(username)).createOrReplace()
+#---------------------------------------------------
+#               LOAD BATCH DATA IN BRANCH
+#---------------------------------------------------
+
+# CREATE TABLE BRANCH
+spark.sql("ALTER TABLE spark_catalog.HOL_DB_{}.TRANSACTIONS_{} CREATE BRANCH ingestion_branch".format(username))
+
+# WRITE DATA OPERATION ON TABLE BRANCH
+trxBatchDf.write.format("iceberg").option("branch", "ingestion_branch").mode("append").save("spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0}".format(username))
+
+#---------------------------------------------------
+#               VALIDATE BATCH DATA IN BRANCH
+#---------------------------------------------------
+
+# Notice that a simple SELECT query against the table still returns the original data.
+spark.sql("SELECT COUNT(*) FROM spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0};".format(username)).show()
+
+# If you want to access the data in the branch, you can specify the branch name in your SELECT query.
+spark.sql("SELECT COUNT(*) FROM spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0} VERSION AS OF 'ingestion_branch';".format(username)).show()

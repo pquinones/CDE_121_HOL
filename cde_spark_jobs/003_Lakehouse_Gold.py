@@ -56,28 +56,18 @@ print("Storage Location from Config File: ", storageLocation)
 username = sys.argv[1]
 print("PySpark Runtime Arg: ", sys.argv[1])
 
-### PII DIMENSION TABLE
-piiDf = spark.read.options(header='True', delimiter=',').csv("{0}/mkthol/pii/{1}/pii".format(storageLocation, username))
-
-### CAST LAT LON AS FLOAT
-piiDf = piiDf.withColumn("address_latitude",  piiDf["address_latitude"].cast('float'))
-piiDf = piiDf.withColumn("address_longitude",  piiDf["address_longitude"].cast('float'))
-
-### STORE CUSTOMER DATA AS TABLE
-piiDf.writeTo("spark_catalog.HOL_DB_{}.CUST_TABLE_{}".format(username)).createOrReplace()
-
 #---------------------------------------------------
 #               ICEBERG INCREMENTAL READ
 #---------------------------------------------------
 
 # ICEBERG TABLE HISTORY (SHOWS EACH SNAPSHOT AND TIMESTAMP)
-spark.sql("SELECT * FROM spark_catalog.HOL_DB_{}.TRANSACTIONS_{}.history".format(username)).show()
+spark.sql("SELECT * FROM spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0}.history".format(username)).show()
 
 # ICEBERG TABLE SNAPSHOTS (USEFUL FOR INCREMENTAL QUERIES AND TIME TRAVEL)
-spark.sql("SELECT * FROM spark_catalog.HOL_DB_{}.TRANSACTIONS_{}.snapshots".format(username)).show()
+spark.sql("SELECT * FROM spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0}.snapshots".format(username)).show()
 
 # STORE FIRST AND LAST SNAPSHOT ID'S FROM SNAPSHOTS TABLE
-snapshots_df = spark.sql("SELECT * FROM spark_catalog.HOL_DB_{}.TRANSACTIONS_{}.snapshots;".format(username))
+snapshots_df = spark.sql("SELECT * FROM spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0}.snapshots;".format(username))
 
 last_snapshot = snapshots_df.select("snapshot_id").tail(1)[0][0]
 second_snapshot = snapshots_df.select("snapshot_id").collect()[1][0]
@@ -87,20 +77,17 @@ incReadDf = spark.read\
     .format("iceberg")\
     .option("start-snapshot-id", second_snapshot)\
     .option("end-snapshot-id", last_snapshot)\
-    .load("spark_catalog.HOL_DB_{}.TRANSACTIONS_{}".format(username))
-
-print("Incremental DF Schema:")
-incReadDf.printSchema()
+    .load("spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0}".format(username))
 
 print("Incremental Report:")
 incReadDf.show()
 
-#---------------------------------------------------
+#-----------------------------------------------------
 #               JOIN INCREMENTAL READ WITH CUST INFO
-#---------------------------------------------------
+#-----------------------------------------------------
 
 ### LOAD CUSTOMER DATA REFINED
-custDf = spark.sql("SELECT * FROM spark_catalog.{}.CUST_TABLE_REFINED".format(username))
+custDf = spark.sql("SELECT * FROM spark_catalog.HOL_DB_{0}.CUST_TABLE_REFINED_{0}".format(username))
 
 print("Cust DF Schema: ")
 custDf.printSchema()
@@ -119,3 +106,5 @@ distanceDf = distanceDf.filter(distanceDf.trx_dist_from_home > 100)
 #---------------------------------------------------
 
 distanceDf.show()
+
+distanceDf.write.format("iceberg").option("branch", "ingestion_branch").mode("append").save("spark_catalog.HOL_DB_{0}.GOLD_TABLE_{0}".format(username))
