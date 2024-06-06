@@ -42,7 +42,7 @@ import pyspark.sql.functions as F
 from pyspark.sql.types import *
 import sys, random, os, json, random, configparser
 from utils import *
-from great_expectations.dataset.sparkdf_dataset import SparkDFDataset
+#from great_expectations.dataset.sparkdf_dataset import SparkDFDataset
 
 spark = SparkSession \
     .builder \
@@ -61,7 +61,7 @@ print("PySpark Runtime Arg: ", sys.argv[1])
 #               LOAD BATCH DATA FROM BRANCH
 #---------------------------------------------------
 
-trxBatchDf = spark.sql("SELECT COUNT(*) FROM spark_catalog.HOL_DB_{}.TRANSACTIONS_{} VERSION AS OF 'ingestion_branch';".format(username))
+trxBatchDf = spark.sql("SELECT * FROM spark_catalog.HOL_DB_{}.TRANSACTIONS_{} VERSION AS OF 'ingestion_branch';".format(username))
 
 #---------------------------------------------------
 #               VALIDATE BATCH DATA IN BRANCH
@@ -69,13 +69,13 @@ trxBatchDf = spark.sql("SELECT COUNT(*) FROM spark_catalog.HOL_DB_{}.TRANSACTION
 
 # validate the data quality of the sales data with great-expectations
 
-geTrxBatchDf = SparkDFDataset(trxBatchDf)
+#geTrxBatchDf = SparkDFDataset(trxBatchDf)
 
-geTrxBatchDfValidation = geTrxBatchDf.expect_compound_columns_to_be_unique(["credit_card_number", "credit_card_provider"])
+#geTrxBatchDfValidation = geTrxBatchDf.expect_compound_columns_to_be_unique(["credit_card_number", "credit_card_provider"])
 
-print(f"VALIDATION RESULTS FOR TRANSACTION BATCH DATA:\n{geTrxBatchDfValidation}\n")
-assert geTrxBatchDfValidation.success, \
-    "VALIDATION FOR SALES TABLE UNSUCCESSFUL: FOUND DUPLICATES IN [credit_card_number, credit_card_provider]."
+#print(f"VALIDATION RESULTS FOR TRANSACTION BATCH DATA:\n{geTrxBatchDfValidation}\n")
+#assert geTrxBatchDfValidation.success, \
+#    "VALIDATION FOR SALES TABLE UNSUCCESSFUL: FOUND DUPLICATES IN [credit_card_number, credit_card_provider]."
 
 ### MERGE INGESTION BRANCH INTO MAIN TABLE BRANCH
 

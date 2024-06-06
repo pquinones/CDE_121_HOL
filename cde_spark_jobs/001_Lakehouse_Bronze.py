@@ -68,7 +68,7 @@ piiDf = piiDf.withColumn("address_latitude",  piiDf["address_latitude"].cast('fl
 piiDf = piiDf.withColumn("address_longitude",  piiDf["address_longitude"].cast('float'))
 
 ### STORE CUSTOMER DATA AS TABLE
-piiDf.writeTo("spark_catalog.HOL_DB_{0}.CUST_TABLE_{0}".format(username)).createOrReplace()
+piiDf.writeTo("spark_catalog.HOL_DB_{0}.CUST_TABLE_{0}".format(username)).using("iceberg").createOrReplace()
 
 #---------------------------------------------------
 #               CREATE REFINED CUSTOMER TABLE
@@ -79,7 +79,7 @@ spark.sql("DROP TABLE IF EXISTS spark_catalog.HOL_DB_{0}.CUST_TABLE_REFINED_{0}"
 spark.sql("""CREATE TABLE spark_catalog.HOL_DB_{0}.CUST_TABLE_REFINED_{0}
                 USING iceberg
                 AS SELECT NAME, EMAIL, BANK_COUNTRY, ACCOUNT_NO, CREDIT_CARD_NUMBER, ADDRESS_LATITUDE, ADDRESS_LONGITUDE
-                FROM spark_catalog.{0}.CUST_TABLE""".format(username))
+                FROM spark_catalog.HOL_DB_{0}.CUST_TABLE_{0}""".format(username))
 
 #---------------------------------------------------
 #               SCHEMA EVOLUTION
@@ -111,8 +111,8 @@ trxBatchDf.printSchema()
 
 ### CAST TYPES
 cols = ["transaction_amount", "latitude", "longitude"]
-transactionsDf = castMultipleColumns(trxBatchDf, cols)
-transactionsDf = trxBatchDf.withColumn("event_ts", trxBatchDf["event_ts"].cast("timestamp"))
+trxBatchDf = castMultipleColumns(trxBatchDf, cols)
+trxBatchDf = trxBatchDf.withColumn("event_ts", trxBatchDf["event_ts"].cast("timestamp"))
 
 ### TRX DF SCHEMA AFTER CASTING
 trxBatchDf.printSchema()
@@ -122,6 +122,8 @@ trxBatchDf.printSchema()
 #---------------------------------------------------
 
 # CREATE TABLE BRANCH
+
+spark.sql("ALTER TABLE spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0} DROP BRANCH IF EXISTS ingestion_branch".format(username))
 spark.sql("ALTER TABLE spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0} CREATE BRANCH ingestion_branch".format(username))
 
 # WRITE DATA OPERATION ON TABLE BRANCH

@@ -106,5 +106,4 @@ distanceDf = distanceDf.filter(distanceDf.trx_dist_from_home > 100)
 #---------------------------------------------------
 
 distanceDf.show()
-
-distanceDf.write.format("iceberg").option("branch", "ingestion_branch").mode("append").save("spark_catalog.HOL_DB_{0}.GOLD_TABLE_{0}".format(username))
+distanceDf.writeTo("spark_catalog.HOL_DB_{0}.GOLD_TABLE_{0}".format(username)).using("iceberg").createOrReplace()
