@@ -27,6 +27,8 @@ echo "Upload setup.py to mkt-hol-setup-"$cde_user
 cde resource upload --name mkt-hol-setup-$cde_user --local-path setup.py
 
 # CREATE SETUP JOB
+echo "Delete job mkt-hol-setup-"$cde_user
+cde job delete --name mkt-hol-setup-$cde_user
 echo "Create job mkt-hol-setup-"$cde_user
 cde job create --name mkt-hol-setup-$cde_user --type spark --mount-1-resource mkt-hol-setup-$cde_user --application-file setup.py --runtime-image-resource-name dex-spark-runtime-$cde_user
 echo "Run job mkt-hol-setup-"$cde_user

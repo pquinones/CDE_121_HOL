@@ -67,7 +67,7 @@ class BankDataGen:
         self.spark.conf.set("spark.sql.shuffle.partitions", shuffle_partitions_requested)
 
         fakerDataspec = (DataGenerator(self.spark, rows=data_rows, partitions=partitions_requested)
-                    .withColumn("credit_card_number", "long", minValue=3674567891195999, maxValue=3674567891197999, uniqueValues=1000, random=True, randomSeed=4)
+                    .withColumn("credit_card_number", "long", minValue=3674567891195999, maxValue=3674567891198000, uniqueValues=2000, step=1)
                     .withColumn("credit_card_provider", text=FakerTextUS("credit_card_provider") )
                     .withColumn("transaction_type", "string", values=["purchase", "cash_advance"], random=True, weights=[9, 1])
                     .withColumn("event_ts", "timestamp", begin="2023-01-01 01:00:00",end="2023-12-31 23:59:00",interval="1 minute", random=True)
@@ -100,7 +100,7 @@ class BankDataGen:
         self.spark.conf.set("spark.sql.shuffle.partitions", shuffle_partitions_requested)
 
         fakerDataspec = (DataGenerator(self.spark, rows=data_rows, partitions=partitions_requested)
-                    .withColumn("credit_card_number", "long", minValue=3174567891123457, maxValue=3174567891199999, uniqueValues=100, random=True) #text=FakerTextUS("credit_card_number")
+                    .withColumn("credit_card_number", "long", minValue=3674567891195999, maxValue=3674567891197999, uniqueValues=100, step=1) #text=FakerTextUS("credit_card_number")
                     .withColumn("credit_card_provider", text=FakerTextUS("credit_card_provider"))
                     .withColumn("transaction_type", "string", values=["purchase", "cash_advance"], random=True, weights=[9, 1])
                     .withColumn("event_ts", "timestamp", begin="2023-01-01 01:00:00",end="2023-12-31 23:59:00",interval="1 minute", random=True)
@@ -126,7 +126,7 @@ class BankDataGen:
         self.spark.conf.set("spark.sql.shuffle.partitions", shuffle_partitions_requested)
 
         fakerDataspec = (DataGenerator(self.spark, rows=data_rows, partitions=partitions_requested)
-                    .withColumn("credit_card_number", "long", minValue=3674567891195999, maxValue=3674567891197999, uniqueValues=data_rows, random=True, randomSeed=4) #text=FakerTextUS("credit_card_number")
+                    .withColumn("credit_card_number", "long", minValue=3674567891191999, maxValue=3674567891192999, uniqueValues=data_rows, random=True, randomSeed=4) #text=FakerTextUS("credit_card_number")
                     .withColumn("credit_card_provider", text=FakerTextUS("credit_card_provider"))
                     .withColumn("transaction_type", "string", values=["purchase", "cash_advance"], random=True, weights=[9, 1])
                     .withColumn("event_ts", "timestamp", begin="2023-01-01 01:00:00",end="2023-12-31 23:59:00",interval="1 minute", random=True)

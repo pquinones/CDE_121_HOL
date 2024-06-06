@@ -35,7 +35,7 @@ from pyspark.sql import SparkSession
 import pyspark.sql.functions as F
 from pyspark.sql.types import *
 
-storageLocation = "s3a://cde-innovation-buk-9e384927/data"
+storageLocation = "s3a://goes-se-sandbox01/data"
 username = "user002"
 ```
 
@@ -181,13 +181,15 @@ distanceDf.filter(distanceDf.trx_dist_from_home > 100).show()
 Create Transactions Iceberg table:
 
 ```
-transactionsDf.writeTo("spark_catalog.HOL_DB_{}.TRANSACTIONS_{}".format(username)).createOrReplace()
+spark.sql("CREATE DATABASE IF NOT EXISTS spark_catalog.HOL_DB_{}".format(username))
+
+transactionsDf.writeTo("spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0}".format(username)).using("iceberg").createOrReplace()
 ```
 
 Load New Batch of Transactions in Temp View:
 
 ```
-trxBatchDf = spark.read.json("{0}/mkthol/trans/{1}/trx_batch_1".format(storageLocation, username))
+trxBatchDf = spark.read.schema("credit_card_number string, credit_card_provider string, event_ts timestamp, latitude double, longitude double, transaction_amount long, transaction_currency string, transaction_type string").json("{0}/mkthol/trans/{1}/trx_batch_1".format(storageLocation, username))
 trxBatchDf.createOrReplaceTempView("trx_batch")
 ```
 
@@ -208,235 +210,52 @@ Run MERGE INTO in order to load new batch into Transactions table:
 Spark SQL Command:
 
 ```
-# PRE-MERGE COUNT:
-print(transactionsDf.count())
+# PRE-MERGE COUNTS BY TRANSACTION TYPE:
+spark.sql("""SELECT TRANSACTION_TYPE, COUNT(*) FROM spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0} GROUP BY TRANSACTION_TYPE""".format(username)).show()
 
 # MERGE OPERATION
-spark.sql("""MERGE INTO spark_catalog.HOL_DB_{}.TRANSACTIONS_{} t   
+spark.sql("""MERGE INTO spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0} t   
 USING (SELECT * FROM trx_batch) s          
 ON t.credit_card_number = s.credit_card_number               
-WHEN MATCHED AND t.transaction_amount < 100 AND t.transaction_currency != "CHF" THEN UPDATE SET t.transaction_type = "PURCHASE"
+WHEN MATCHED AND t.transaction_amount < 1000 AND t.transaction_currency != "CHF" THEN UPDATE SET t.transaction_type = "invalid"
 WHEN NOT MATCHED THEN INSERT *""".format(username))
 
 # POST-MERGE COUNT:
-print(transactionsDf.count())
+spark.sql("""SELECT TRANSACTION_TYPE, COUNT(*) FROM spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0} GROUP BY TRANSACTION_TYPE""".format(username)).show()
 ```
 
 #### Iceberg Time Travel / Incremental Read
 
-Now that we have appended
+Now that you added data to the transactions table you can perform Iceberg Time Travel operations.
 
 ```
 # ICEBERG TABLE HISTORY (SHOWS EACH SNAPSHOT AND TIMESTAMP)
-spark.sql("SELECT * FROM spark_catalog.HOL_DB_{}.TRANSACTIONS_{}.history".format(username)).show()
+spark.sql("SELECT * FROM spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0}.history".format(username)).show()
 
 # ICEBERG TABLE SNAPSHOTS (USEFUL FOR INCREMENTAL QUERIES AND TIME TRAVEL)
-spark.sql("SELECT * FROM spark_catalog.HOL_DB_{}.TRANSACTIONS_{}.snapshots".format(username)).show()
+spark.sql("SELECT * FROM spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0}.snapshots".format(username)).show()
+
+# APPEND SECOND DATA BATCH
+trxBatchDf = spark.read.schema("credit_card_number string, credit_card_provider string, event_ts timestamp, latitude double, longitude double, transaction_amount long, transaction_currency string, transaction_type string").json("{0}/mkthol/trans/{1}/trx_batch_2".format(storageLocation, username))
+trxBatchDf.writeTo("spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0}".format(username)).using("iceberg").append()
 
 # STORE FIRST AND LAST SNAPSHOT ID'S FROM SNAPSHOTS TABLE
-snapshots_df = spark.sql("SELECT * FROM spark_catalog.HOL_DB_{}.TRANSACTIONS_{}.snapshots;".format(username))
+snapshots_df = spark.sql("SELECT * FROM spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0}.snapshots;".format(username))
 ```
 
 ```
 last_snapshot = snapshots_df.select("snapshot_id").tail(1)[0][0]
 second_snapshot = snapshots_df.select("snapshot_id").collect()[1][0]
-#first_snapshot = snapshots_df.select("snapshot_id").head(1)[0][0]
 
 incReadDf = spark.read\
     .format("iceberg")\
     .option("start-snapshot-id", second_snapshot)\
     .option("end-snapshot-id", last_snapshot)\
-    .load("spark_catalog.HOL_DB_{}.TRANSACTIONS_{}".format(username))
-
-print("Incremental DF Schema:")
-incReadDf.printSchema()
+    .load("spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0}".format(username))
 
 print("Incremental Report:")
 incReadDf.show()
 ```
-
-
-
-
-
-
-
-
-
-
-#### Create Iceberg Table from PySpark DF
-
-```
-transactionsDf.writeTo("spark_catalog.TRX_DB_{}.TRANSACTIONS_{}".format(username)).create()
-```
-
-#### Working with Iceberg Table Branches
-
-##### Upsert Data into Branch with Iceberg Merge Into
-
-```
-# LOAD NEW TRANSACTION BATCH
-#batchDf = spark.read.csv("/app/mount/cell_towers_2.csv", header=True, inferSchema=True)
-batchDf = spark.read.json("{0}/mkthol/trans/{1}/trx_batch_2".format(storageLocation, username))
-batchDf.printSchema()
-
-# CREATE TABLE BRANCH
-spark.sql("ALTER TABLE spark_catalog.TRX_DB_{}.TRANSACTIONS_{} CREATE BRANCH ingestion_branch".format(USERNAME))
-
-# WRITE DATA OPERATION ON TABLE BRANCH
-batchDf.write.format("iceberg").option("branch", "ingestion_branch").mode("append").save("spark_catalog.TRX_DB_{}.TRANSACTIONS_{}".format(USERNAME))
-```
-
-Notice that a simple SELECT query against the table still returns the original data.
-
-```
-spark.sql("SELECT * FROM spark_catalog.TRX_DB_{}.TRANSACTIONS_{};".format(USERNAME)).show()
-```
-
-If you want to access the data in the branch, you can specify the branch name in your SELECT query.
-
-```
-spark.sql("SELECT * FROM spark_catalog.TRX_DB_{}.TRANSACTIONS_{} VERSION AS OF 'ingestion_branch';".format(USERNAME)).show()
-```
-
-Track table snapshots post Merge Into operation:
-
-```
-# QUERY ICEBERG METADATA HISTORY TABLE
-spark.sql("SELECT * FROM spark_catalog.TRX_DB_{}.TRANSACTIONS_{}.snapshots".format(USERNAME)).show(20, False)
-```
-
-### Cherrypicking Snapshots
-
-The cherrypick_snapshot procedure creates a new snapshot incorporating the changes from another snapshot in a metadata-only operation (no new datafiles are created). To run the cherrypick_snapshot procedure you need to provide two parameters: the name of the table you’re updating as well as the ID of the snapshot the table should be updated based on. This transaction will return the snapshot IDs before and after the cherry-pick operation as source_snapshot_id and current_snapshot_id.
-
-we will use the cherrypick operation to commit the changes to the table which were staged in the 'ingestion_branch' branch up until now.
-
-```
-# SHOW PAST BRANCH SNAPSHOT ID'S
-spark.sql("SELECT * FROM spark_catalog.TRX_DB_{}.TRANSACTIONS_{}.refs;".format(USERNAME)).show()
-
-# SAVE THE SNAPSHOT ID CORRESPONDING TO THE CREATED BRANCH
-branchSnapshotId = spark.sql("SELECT snapshot_id FROM spark_catalog.TRX_DB_{}.TRANSACTIONS_{}.refs WHERE NAME == 'ingestion_branch';".format(USERNAME)).collect()[0][0]
-
-# USE THE PROCEDURE TO CHERRY-PICK THE SNAPSHOT
-# THIS IMPLICITLY SETS THE CURRENT TABLE STATE TO THE STATE DEFINED BY THE CHOSEN PRIOR SNAPSHOT ID
-spark.sql("CALL spark_catalog.system.cherrypick_snapshot('spark_catalog.TRX_DB_{}.TRANSACTIONS_{}',{1})".format(USERNAME, branchSnapshotId))
-
-# VALIDATE THE CHANGES
-# THE TABLE ROW COUNT IN THE CURRENT TABLE STATE REFLECTS THE APPEND OPERATION - IT PREVIOSULY ONLY DID BY SELECTING THE BRANCH
-spark.sql("SELECT COUNT(*) FROM spark_catalog.TRX_DB_{}.TRANSACTIONS_{};".format(USERNAME)).show()
-```
-
-### Working with Iceberg Table Tags
-
-##### Create Table Tag
-
-Tags are immutable labels for Iceberg Snapshot ID's and can be used to reference a particular version of the table via a simple tag rather than having to work with Snapshot ID's directly.   
-
-```
-spark.sql("ALTER TABLE spark_catalog.TRX_DB_{}.TRANSACTIONS_{} CREATE TAG businessOrg RETAIN 365 DAYS".format(USERNAME)).show()
-```
-
-Select your table snapshot as of a particular tag:
-
-```
-spark.sql("SELECT * FROM spark_catalog.TRX_DB_{}.TRANSACTIONS_{} VERSION AS OF 'businessOrg';".format(USERNAME)).show()
-```
-
-
-
-
-
-
-
-
-
-### Lab 2: Create CDE Resources and Run CDE Spark Job
-
-Up until now you used Sessions to interactively explore data. CDE also allows you to run Spark Application code in batch with as a CDE Job. There are two types of CDE Jobs: Spark and Airflow. In this lab we will create a CDE Spark Job and revisit Airflow later in part 3.
-
-The CDE Spark Job is an abstraction over the Spark Submit. With the CDE Spark Job you can create a reusable, modular Spark Submit definition that is saved in CDE and can be modified in the CDE UI (or via the CDE CLI and API) before every run according to your needs. CDE stores the job definition for each run in the Job Runs UI so you can go back and refer to it long after your job has completed.
-
-Furthermore, CDE allows you to directly store artifacts such as Python files, Jars and other dependencies, or create Python environments and Docker containers in CDE as "CDE Resources". Once created in CDE, Resources are available to CDE Jobs as modular components of the CDE Job definition which can be swapped and referenced by a particular job run as needed.
-
-These features dramatically reduce the amount of work and effort normally required to manage and monitor Spark Jobs in a Spark Cluster. By providing a unified view over all your runs along with the associated artifacts and dependencies, CDE streamlines CI/CD pipelines and removes the need for glue code in your Spark cluster.
-
-In the next steps we will see these benefits in actions.
-
-##### Create CDE Python Resource
-
-Navigate to the Resources tab and create a Python Resource. Make sure to select the Virtual Cluster assigned to you if you are creating a Resource from the CDE Home Page, and to name the Python Resource after your username e.g. "fraud-prevention-py-user100" if you are "user100".
-
-Upload the "requirements.txt" file located in the "cde_spark_jobs" folder. This can take up to a few minutes.
-
-Please familiarize yourself with the contents of the "requirements.txt" file and notice that it contains a few Python libraries such as Pandas and PyArrow.
-
-Then, move on to the next section even while the environment build is still in progress.
-
-![alt text](../../img/part1-cdepythonresource-1.png)
-
-![alt text](../../img/part1-cdepythonresource-2.png)
-
-##### Create CDE Files Resource
-
-From the Resources page create a CDE Files Resource. Upload all files contained in the "cde_spark_jobs" folder. Again, ensure the Resource is named after your unique workshop username and it is created in the Virtual Cluster assigned to you.
-
-![alt text](../../img/part1-cdefilesresource-1.png)
-
-![alt text](../../img/part1-cdefilesresource-2.png)
-
-Before moving on to the next step, please familiarize yourself with the code in the "01_fraud_report.py", "utils.py", and "parameters.conf" files.
-
-Notice that "01_fraud_report.py" contains the same PySpark Application code you ran in the CDE Session, with the exception that the column casting and renaming steps have been refactored into Python functions in the "utils.py" script.
-
-Finally, notice the contents of "parameters.conf". Storing variables in a file in a Files Resource is one method used by CDE Data Engineers to dynamically parameterize scripts with external values.
-
-##### Create CDE Spark Job
-
-Now that the CDE Resources have been created you are ready to create your first CDE Spark Job.
-
-Navigate to the CDE Jobs tab and click on "Create Job". The long form loaded to the page allows you to build a Spark Submit as a CDE Spark Job, step by step.
-
-![alt text](../../img/part1-cdesparkjob-1.png)
-
-Enter the following values without quotes into the corresponding fields. Make sure to update the username with your assigned user wherever needed:
-
-* Job Type: Spark
-* Name: 01_fraud_report_userxxx
-* File: Select from Resource -> "01_fraud_report.py"
-* Arguments: userxxx
-* Configurations:
-  - key: spark.sql.autoBroadcastJoinThreshold
-  - value: 11M
-
-The form should now look similar to this:
-
-![alt text](../../img/part1-cdesparkjob-2.png)
-
-Finally, open the "Advanced Options" section.
-
-Notice that your CDE Files Resource has already been mapped to the CDE Job for you.
-
-Then, update the Compute Options by increasing "Executor Cores" and "Executor Memory" from 1 to 2.
-
-![alt text](../../img/part1-cdesparkjob-3.png)
-
-Finally, run the CDE Job by clicking the "Create and Run" icon.
-
-##### CDE Job Run Observability
-
-Navigate to the Job Runs page in your Virtual Cluster and notice a new Job Run is being logged automatically for you.
-
-![alt text](../../img/part1-cdesparkjob-4.png)
-
-Once the run completes, open the run details by clicking on the Run ID integer in the Job Runs page.
-
-![alt text](../../img/part1-cdesparkjob-5.png)
-
-Open the logs tab and validate output from the Job Run in the Driver -> Stdout tab.
-
-![alt text](../../img/part1-cdesparkjob-6.png)
 
 ### Summary
 
@@ -450,6 +269,7 @@ CDE Virtual Clusters provide native support for Iceberg. Users can run Spark wor
 
 In this section you first explored two datasets interactively with CDE Interactive sessions. This feature allowed you to run ad-hoc queries on large, structured and unstructured data, and prototype Spark Application code for batch execution.
 
+Then, you leveraged Apache Iceberg Merge Into and Time Travel in order to first efficiently upsert your data, and then query your data across the time dimension. These are just two simple examples of how Iceberg Lakehouse Analytics allow you to implement flexible data engineering pipelines.
 
 ### Useful Links and Resources
 
