@@ -1,4 +1,4 @@
-# Part 2: Job Deployment & Orchestration
+# Job Deployment & Orchestration
 
 * [A Brief Introduction to Apache Airflow](https://github.com/pdefusco/CDE_Banking_HOL_MKT/blob/main/step_by_step_guides/english/part_03_airflow.md#a-brief-introduction-to-airflow)
 * [Lab 1: Orchestrate Spark Pipeline with Airflow](https://github.com/pdefusco/CDE_Banking_HOL_MKT/blob/main/step_by_step_guides/english/part_03_airflow.md#lab-1-orchestrate-spark-pipeline-with-airflow)
@@ -7,43 +7,31 @@
 
 ### Lab 3: Create CDE Resources and Run CDE Spark Job
 
-Up until now you used Sessions to interactively explore data. CDE also allows you to run Spark Application code in batch with as a CDE Job. There are two types of CDE Jobs: Spark and Airflow. In this lab we will create a CDE Spark Job and revisit Airflow later in part 3.
+Up until now you used Sessions to interactively explore data. CDE also allows you to run Spark Application code in batch as a CDE Job. There are two types of CDE Jobs: Spark and Airflow. In this lab we will create an Airflow Job in order to orchestrate three Spark Jobs.
 
 The CDE Spark Job is an abstraction over the Spark Submit. With the CDE Spark Job you can create a reusable, modular Spark Submit definition that is saved in CDE and can be modified in the CDE UI (or via the CDE CLI and API) before every run according to your needs. CDE stores the job definition for each run in the Job Runs UI so you can go back and refer to it long after your job has completed.
 
 Furthermore, CDE allows you to directly store artifacts such as Python files, Jars and other dependencies, or create Python environments and Docker containers in CDE as "CDE Resources". Once created in CDE, Resources are available to CDE Jobs as modular components of the CDE Job definition which can be swapped and referenced by a particular job run as needed.
 
-These features dramatically reduce the amount of work and effort normally required to manage and monitor Spark Jobs in a Spark Cluster. By providing a unified view over all your runs along with the associated artifacts and dependencies, CDE streamlines CI/CD pipelines and removes the need for glue code in your Spark cluster.
-
-In the next steps we will see these benefits in actions.
-
-##### Create CDE Python Resource
-
-Navigate to the Resources tab and create a Python Resource. Make sure to select the Virtual Cluster assigned to you if you are creating a Resource from the CDE Home Page, and to name the Python Resource after your username e.g. "fraud-prevention-py-user100" if you are "user100".
-
-Upload the "requirements.txt" file located in the "cde_spark_jobs" folder. This can take up to a few minutes.
-
-Please familiarize yourself with the contents of the "requirements.txt" file and notice that it contains a few Python libraries such as Pandas and PyArrow.
-
-Then, move on to the next section even while the environment build is still in progress.
-
-![alt text](../../img/part1-cdepythonresource-1.png)
-
-![alt text](../../img/part1-cdepythonresource-2.png)
+These features dramatically reduce the amount of effort otherwise required in order to manage and monitor Spark Jobs in a Spark Cluster. By providing a unified pane over all your runs along with a clear view of all associated artifacts and dependencies, CDE streamlines Spark cluster operations.
 
 ##### Create CDE Files Resource
 
-From the Resources page create a CDE Files Resource. Upload all files contained in the "cde_spark_jobs" folder. Again, ensure the Resource is named after your unique workshop username and it is created in the Virtual Cluster assigned to you.
+From the Resources page create a CDE Files Resource. Upload all files contained in the "cde_spark_jobs" folder with exception of "requirements.txt". Ensure the Resource is named after your unique workshop username and it is created in the Virtual Cluster assigned to you.
 
 ![alt text](../../img/part1-cdefilesresource-1.png)
 
 ![alt text](../../img/part1-cdefilesresource-2.png)
 
-Before moving on to the next step, please familiarize yourself with the code in the "01_fraud_report.py", "utils.py", and "parameters.conf" files.
+Before moving on to the next step, please familiarize yourself with the code in the "01_Lakehouse_Bronze.py", "002_Lakehouse_Silver.py", "003_Lakehouse_Gold.py", "utils.py", and "parameters.conf" files.
 
-Notice that "01_fraud_report.py" contains the same PySpark Application code you ran in the CDE Session, with the exception that the column casting and renaming steps have been refactored into Python functions in the "utils.py" script.
+* The "01_Lakehouse_Bronze.py" PySpark Application createas an Iceberg customer table from a CSV file and provides a few examples of Iceberg Schema evolution transformations; then it loads the raw transactions batch into a PySpark dataframe and then writes the data into the Transactions table through an Iceberg Table Branch named "ingestion_branch". Notice that, similarly to the CDE Session earlier, a "castMultipleColumns" method is used to transform multiple columns at once. However, this time the Python method is stored in the "utils.py" script in a CDE Files Resource and is loaded as a job dependency.
 
-Finally, notice the contents of "parameters.conf". Storing variables in a file in a Files Resource is one method used by CDE Data Engineers to dynamically parameterize scripts with external values.
+* The "02_Lakehouse_Silver.py" PySpark Application loads the data from the Transactions table's "ingestion_branch" branch, validates it, and then uses the "cherrypick_snapshot" method in order to merge the "ingestion_branch" branch with the main table branch in order to update the current state of the table.
+
+* The "03_Lakehouse_Gold.py" PySpark Application finally loads the data from the Customers and Transactions tables, joins it and by means of a PySpark UDF provides the distance between the transaction and home location of the customer. Notice that the Transactions table is filtered with two Iceberg Snapshots. In other words, only the data loaded in between the table operations defined by the two snapshots is selected. Finally, a selection of columns from the joined dataframes is stored as a new Iceberg Table which will serve as the Gold layer in the Lakehouse. That is to say, this is the table that scheduled reports and BI Analysts will routinely query in order to complete their reporting tasks.
+
+* The "parameters.conf" contains a configuration variable that is passed to each of the three PySpark scripts. Storing variables in a Files Resource is a commonly used method by CDE Data Engineers to dynamically parameterize scripts.
 
 ##### Create CDE Spark Job
 
@@ -56,49 +44,44 @@ Navigate to the CDE Jobs tab and click on "Create Job". The long form loaded to 
 Enter the following values without quotes into the corresponding fields. Make sure to update the username with your assigned user wherever needed:
 
 * Job Type: Spark
-* Name: 01_fraud_report_userxxx
-* File: Select from Resource -> "01_fraud_report.py"
-* Arguments: userxxx
-* Configurations:
-  - key: spark.sql.autoBroadcastJoinThreshold
-  - value: 11M
+* Name: 001_Lakehouse_Bronze.py
+* File: Select from Resource -> "001_Lakehouse_Bronze.py"
+* Arguments: userxxx #e.g. user002
 
 The form should now look similar to this:
 
 ![alt text](../../img/part1-cdesparkjob-2.png)
 
-Finally, open the "Advanced Options" section.
-
-Notice that your CDE Files Resource has already been mapped to the CDE Job for you.
+Finally, open the "Advanced Options" section. Notice that your CDE Files Resource has already been mapped to the CDE Job for you.
 
 Then, update the Compute Options by increasing "Executor Cores" and "Executor Memory" from 1 to 2.
 
 ![alt text](../../img/part1-cdesparkjob-3.png)
 
-Finally, run the CDE Job by clicking the "Create and Run" icon.
+Finally, save the CDE Job by clicking the "Create" icon.
 
-##### CDE Job Run Observability
+Repeat the process for the two remaining PySpark scripts:
 
-Navigate to the Job Runs page in your Virtual Cluster and notice a new Job Run is being logged automatically for you.
+Lakehouse Silver Spark Job:
 
-![alt text](../../img/part1-cdesparkjob-4.png)
+* Job Type: Spark
+* Name: 002_Lakehouse_Silver.py
+* File: Select from Resource -> "002_Lakehouse_Silver.py"
+* Arguments: userxxx #e.g. user002
 
-Once the run completes, open the run details by clicking on the Run ID integer in the Job Runs page.
+Lakehouse Gold Spark Job:
 
-![alt text](../../img/part1-cdesparkjob-5.png)
+* Job Type: Spark
+* Name: 003_Lakehouse_Gold.py
+* File: Select from Resource -> "002_Lakehouse_Gold.py"
+* Arguments: userxxx #e.g. user002
 
-Open the logs tab and validate output from the Job Run in the Driver -> Stdout tab.
+Again, please create but do not run the jobs!
 
-![alt text](../../img/part1-cdesparkjob-6.png)
 
 ### Lab 4: Orchestrate Spark Pipeline with Airflow
 
-In this lab you will build a pipeline of Spark Jobs to load a new batch of transactions, join it with customer PII data, and create a report of customers who are likely victims of credit card fraud.
-
-At a high level, the workflow will be similar to Part 1 and 2 where you created two tables and loaded a new batch of transactions. However, there are two differences:
-
-1. The workflow will leverage all the features used up to this point but in unison. For example, Iceberg Time Travel will be used to create an incremental report including only updates within the latest batch rather than the entire historical dataset.
-2. The entire workflow will be orchestrated by Airflow. This will allow you to run your jobs in parallel while implementing robust error handling logic.
+In this lab you will build a pipeline of Spark Jobs to load a new batch of transactions, join it with customer PII data, and create a table of customers who are likely victims of credit card fraud including their email address and name. The entire workflow will be orchestrated by Apache Airflow.
 
 ### A Brief Introduction to Airflow
 
@@ -108,33 +91,9 @@ The main characteristic of Airflow workflows is that all workflows are defined i
 
 CDE embeds Apache Airflow at the CDE Virtual Cluster level. It is automatically deployed for the CDE user during CDE Virtual Cluster creation and requires no maintenance on the part of the CDE Admin. In addition to the core Operators, CDE supports the CDEJobRunOperator and the CDWOperator in order to trigger Spark Jobs. and Datawarehousing queries.
 
-##### Create Spark Jobs
+##### Create Airflow Files Resource
 
-In this section you will create four CDE Spark Jobs via the CDE Jobs UI. It is important that you ***do not run the Spark Jobs when you create them***. If you do run them by mistake, please raise your hand during the workshop and ask for someone to help you implement a workaround.
-
-1. Lakehouse Bronze:
-  - Name: name this after your user e.g. if you are user "user010" call it "03_cust_data_user010"
-  - Application File: "03_cust_data.py" located in your CDE Files resource.
-  - Arguments: enter your username here, without quotes (just text) e.g. if you are user "user010" enter "user010" without quotes
-  - Python Environment: choose your CDE Python resource from the dropdown
-  - Files & Resources: choose your CDE Files resource from the dropdown (this should have already been prefilled for you)
-  - Leave all other settings to default values and create the job.
-
-2. Lakehouse Silver:
-  - Name: name this after your user e.g. if you are user "user010" call it "04_merge_trx_user010"
-  - Application File: "04_merge_trx.py" located in your CDE Files resource.
-  - Arguments: enter your username here, without quotes (just text) e.g. if you are user "user010" enter "user010" without quotes
-  - Files & Resources: choose your CDE Files resource from the dropdown (this should have already been prefilled for you)
-  - Leave all other settings to default values and create the job.  
-
-3. Lakehouse Gold:
-  - Name: name this after your user e.g. if you are user "user010" call it "05_inc_report_user010"
-  - Application File: "05_incremental_report.py" located in your CDE Files resource.
-  - Arguments: enter your username here, without quotes (just text) e.g. if you are user "user010" enter "user010" without quotes
-  - Files & Resources: choose your CDE Files resource from the dropdown (this should have already been prefilled for you)
-  - Leave all other settings to default values and create the job.  
-
-![alt text](../../img/part3-cdesparkjob-1.png)
+Just like CDE Spark Jobs, Airflow jobs can leverage CDE Files Resources in order to load files including datasets or runtime parameters. Create a CDE Files Resource and load "my_file.txt" in it.
 
 ##### Create Airflow Job
 
@@ -142,21 +101,18 @@ Open the "airflow_dag.py" script located in the "cde_airflow_jobs" folder. Famil
 
 * The Python classes needed for the DAG Operators are imported at the top. Notice the CDEJobRunOperator is included to run Spark Jobs in CDE.
 * The "default_args" dictionary includes options for scheduling, setting dependencies, and general execution.
-* Four instances of the CDEJobRunOperator obect is declared with the following arguments:
-  - Task ID: This is the name used by the Airflow UI to recognize the node in the DAG.
-  - DAG: This has to be the name of the DAG object instance declared at line 16.
-  - Job Name: This has to be the name of the Spark CDE Job created in step 1 above.
+* Three instances of the CDEJobRunOperator obect are declared. These reflect the three CDE Spark Jobs you created above.
 * Finally, at the bottom of the DAG, Task Dependencies are declared. With this statement you can specify the execution sequence of DAG tasks.
 
 Edit the username variable at line 49. Then navigate to the CDE Jobs UI and create a new CDE Job.
 
-Select Airflow as the Job Type, assign a unique CDE Job name based on your user, and then run the Job.  
+Select Airflow as the Job Type; assign a unique CDE Job name based on your user; select the "airflow_dag.py" script from your Files Resource, and then add the Files Resource dependency where you loaded "my_file.txt".  
 
 ![alt text](../../img/part3-cdeairflowjob-1.png)
 
 ![alt text](../../img/part3-cdeairflowjob-2.png)
 
-Monitor the execution of the pipeline from the Job Runs UI. Notice an Airflow Job will be triggered and successively the four CDE Spark Jobs will run one by one.
+Monitor the execution of the pipeline from the Job Runs UI. Notice an Airflow Job will be triggered and successively the three CDE Spark Jobs will run one by one.
 
 While the job is in-flight open the Airflow UI and monitor execution.
 

@@ -49,16 +49,16 @@ from airflow.providers.amazon.aws.operators.s3 import S3ListOperator, S3CreateBu
 from airflow.operators.bash import BashOperator
 import pendulum
 
-username = "user092" # Enter your username here
+username = "user002" # Enter your username here
 bucket_name = "eastbucket-" + username
-dag_name = "BankFraud-Orch-"+username
+dag_name = "BankFraud-future-"+username
 
 print("Using DAG Name: {}".format(dag_name))
 
 default_args = {
     'owner': username,
     'depends_on_past': False,
-    'start_date': datetime(2024, 5, 21),
+    'start_date': datetime(2024, 5, 21)
 }
 
 dag = DAG(
@@ -77,7 +77,7 @@ start = DummyOperator(
 create_bucket = S3CreateBucketOperator(
     task_id='create_bucket',
     bucket_name=bucket_name,
-    dag=custom_airflow_dag,
+    dag=dag,
     aws_conn_id='s3_default',
     region_name='us-east-2'
 )
@@ -85,15 +85,15 @@ create_bucket = S3CreateBucketOperator(
 list_bucket  = S3ListOperator(
     task_id="list_keys",
     bucket=bucket_name,
-    dag=custom_airflow_dag,
+    dag=dag,
     aws_conn_id = 's3_default'
 )
 
 read_conf = BashOperator(
     	task_id="read_conf",
-    	bash_command="cat /app/mount/my_file_resource/my_file.txt",
+    	bash_command="cat /app/mount/holairflowresource/my_file.txt",
         do_xcom_push=True,
-        dag=custom_airflow_dag
+        dag=dag
 	)
 
 create_object = S3CreateObjectOperator(
@@ -102,26 +102,26 @@ create_object = S3CreateObjectOperator(
     s3_key="my_file.txt",
     data="{{ ti.xcom_pull(task_ids=[\'read_conf\'])}}",
     replace=True,
-    dag=custom_airflow_dag,
+    dag=dag,
     aws_conn_id = 's3_default'
 )
 
 bronze = CDEJobRunOperator(
-        task_id='data-validation',
+        task_id='data-ingestion',
         dag=dag,
         job_name='01_Lakehouse_Bronze_'+username, #Must match name of CDE Spark Job in the CDE Jobs UI
         trigger_rule='all_success',
         )
 
 silver = CDEJobRunOperator(
-        task_id='customer-data-load',
+        task_id='iceberg-merge-branch',
         dag=dag,
         job_name='02_Lakehouse_Silver_'+username, #Must match name of CDE Spark Job in the CDE Jobs UI
         trigger_rule='all_success',
         )
 
 gold = CDEJobRunOperator(
-        task_id='merge-trx',
+        task_id='gold-layer',
         dag=dag,
         job_name='03_Lakehouse_Gold_'+username, #Must match name of CDE Spark Job in the CDE Jobs UI
         trigger_rule='all_success',
@@ -131,7 +131,7 @@ delete_bucket = S3DeleteBucketOperator(
     task_id='delete_bucket',
     bucket_name=bucket_name,
     force_delete=True,
-    dag=custom_airflow_dag,
+    dag=dag,
     aws_conn_id = 's3_default'
 )
 
@@ -140,4 +140,4 @@ end = DummyOperator(
         dag=dag
 )
 
-start >> create_bucket bronze >> list_bucket >> read_conf >> silver >> gold >> delete_bucket >> end
+start >> create_bucket >> list_bucket >> read_conf >> create_object >> bronze >> silver >> gold >> delete_bucket >> end
