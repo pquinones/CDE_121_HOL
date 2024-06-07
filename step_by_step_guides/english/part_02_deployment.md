@@ -16,23 +16,45 @@ Furthermore, CDE allows you to directly store artifacts such as Python files, Ja
 
 These features dramatically reduce the amount of effort otherwise required in order to manage and monitor Spark Jobs in a Spark Cluster. By providing a unified pane over all your runs along with a clear view of all associated artifacts and dependencies, CDE streamlines Spark cluster operations.
 
-##### Create CDE Files Resource
+##### Familiarize Yourself with the Code
 
-From the Resources page create a CDE Files Resource. Upload all files contained in the "cde_spark_jobs" folder with exception of "requirements.txt". Ensure the Resource is named after your unique workshop username and it is created in the Virtual Cluster assigned to you.
+The Spark Application scripts and configuration files used in these labs are available at the [CDE Spark Jobs folder in the HOL git repository](https://github.com/pdefusco/CDE_121_HOL/tree/main/cde_spark_jobs). Before moving on to the next step, please familiarize yourself with the code in the "01_Lakehouse_Bronze.py", "002_Lakehouse_Silver.py", "003_Lakehouse_Gold.py", "utils.py",  "parameters.conf" files.
 
-![alt text](../../img/part1-cdefilesresource-1.png)
-
-![alt text](../../img/part1-cdefilesresource-2.png)
-
-Before moving on to the next step, please familiarize yourself with the code in the "01_Lakehouse_Bronze.py", "002_Lakehouse_Silver.py", "003_Lakehouse_Gold.py", "utils.py", and "parameters.conf" files.
+The Airflow DAG script is available in the [CDE Airflow Jobs folder in the HOL git repository](https://github.com/pdefusco/CDE_121_HOL/tree/main/cde_airflow_jobs). Please familiarize yourself with the code in the "airflow_dag.py" script as well.
 
 * The "01_Lakehouse_Bronze.py" PySpark Application createas an Iceberg customer table from a CSV file and provides a few examples of Iceberg Schema evolution transformations; then it loads the raw transactions batch into a PySpark dataframe and then writes the data into the Transactions table through an Iceberg Table Branch named "ingestion_branch". Notice that, similarly to the CDE Session earlier, a "castMultipleColumns" method is used to transform multiple columns at once. However, this time the Python method is stored in the "utils.py" script in a CDE Files Resource and is loaded as a job dependency.
 
+* The "utils.py" contains a the Python method to transform multiple dataframe columns at once utilized by the "01_Lakehouse_Bronze.py" script.
+
+* The "parameters.conf" contains a configuration variable that is passed to each of the three PySpark scripts. Storing variables in a Files Resource is a commonly used method by CDE Data Engineers to dynamically parameterize scripts and pass hidden credentials at runtime.
+
 * The "02_Lakehouse_Silver.py" PySpark Application loads the data from the Transactions table's "ingestion_branch" branch, validates it, and then uses the "cherrypick_snapshot" method in order to merge the "ingestion_branch" branch with the main table branch in order to update the current state of the table.
 
-* The "03_Lakehouse_Gold.py" PySpark Application finally loads the data from the Customers and Transactions tables, joins it and by means of a PySpark UDF provides the distance between the transaction and home location of the customer. Notice that the Transactions table is filtered with two Iceberg Snapshots. In other words, only the data loaded in between the table operations defined by the two snapshots is selected. Finally, a selection of columns from the joined dataframes is stored as a new Iceberg Table which will serve as the Gold layer in the Lakehouse. That is to say, this is the table that scheduled reports and BI Analysts will routinely query in order to complete their reporting tasks.
+* The "03_Lakehouse_Gold.py" PySpark Application loads the data from the Customers and Transactions tables, joins it and by means of a PySpark UDF provides the distance between the transaction and home location of the customer. Notice that the Transactions table is filtered with two Iceberg Snapshots. In other words, only the data loaded in between the table operations defined by the two snapshots is selected. Finally, a selection of columns from the joined dataframes is stored as a new Iceberg Table which will serve as the Gold layer in the Lakehouse. That is to say, this is the table that scheduled reports and BI Analysts will routinely query in order to complete their reporting tasks.
 
-* The "parameters.conf" contains a configuration variable that is passed to each of the three PySpark scripts. Storing variables in a Files Resource is a commonly used method by CDE Data Engineers to dynamically parameterize scripts.
+* The "airflow_dag.py" Airflow DAG orchestrates a Data Engineering pipeline. First an AWS S3 bucket is created; a simple file "my_file.txt" is read from a CDE Files Resource and written to the S3 bucket. Successively the three CDE Spark Jobs discussed above are executed to transform and join customer transactions and PII data and create a Lakehouse Gold Layer table. Finally, the S3 bucket is deleted. The steps above are achieved with a combination of Airflow and Cloudera Open Source Operators.
+
+##### Create CDE Repository
+
+Git repositories allow teams to collaborate, manage project artifacts, and promote applications from lower to higher environments. CDE supports integration with Git providers such as GitHub, GitLab, and Bitbucket to synchronize job runs with different versions of your code.
+
+In this step you will create a CDE Repository in order to clone the PySpark scripts containing the Applicatio Code for your CDE Spark Job.
+
+From the Main Page click on "Repositories" and then the "Create Repository" blue icon. Use the following parameters for the form:
+
+```
+Repository Name: CDE_Repo_userxxx
+URL: https://github.com/pdefusco/CDE_121_HOL.git
+Branch: main
+```
+
+All files from the git repository are now stored in CDE as a CDE Repository. Each participant will have their own CDE repository.
+
+##### Create CDE Files Resource
+
+A resource in CDE is a named collection of files used by a job or a session. Resources can include application code, configuration files, custom Docker images, and Python virtual environment specifications (requirements.txt).
+
+A CDE Resource of type "Files" containing the the "parameters.conf" and "utils.py" files has already been created for all participants.
 
 ##### Create CDE Spark Job
 
@@ -74,7 +96,7 @@ Lakehouse Gold Spark Job:
 
 * Job Type: Spark
 * Name: 003_Lakehouse_Gold.py
-* File: Select from Resource -> "002_Lakehouse_Gold.py"
+* File: Select from Resource -> "003_Lakehouse_Gold.py"
 * Arguments: userxxx #e.g. user002
 
 Again, please create but do not run the jobs!
@@ -94,7 +116,7 @@ CDE embeds Apache Airflow at the CDE Virtual Cluster level. It is automatically 
 
 ##### Create Airflow Files Resource
 
-Just like CDE Spark Jobs, Airflow jobs can leverage CDE Files Resources in order to load files including datasets or runtime parameters. Create a CDE Files Resource and load "my_file.txt" in it.
+Just like CDE Spark Jobs, Airflow jobs can leverage CDE Files Resources in order to load files including datasets or runtime parameters. A CDE Files Resource named "airflow_dependencies" containing the "my_file.txt" has already been created for all participants.
 
 ##### Create Airflow Job
 
@@ -105,9 +127,13 @@ Open the "airflow_dag.py" script located in the "cde_airflow_jobs" folder. Famil
 * Three instances of the CDEJobRunOperator obect are declared. These reflect the three CDE Spark Jobs you created above.
 * Finally, at the bottom of the DAG, Task Dependencies are declared. With this statement you can specify the execution sequence of DAG tasks.
 
-Edit the username variable at line 49. Then navigate to the CDE Jobs UI and create a new CDE Job.
+***Download the file to your local machine. Edit the username variable at line 49***.
 
-Select Airflow as the Job Type; assign a unique CDE Job name based on your user; select the "airflow_dag.py" script from your Files Resource, and then add the Files Resource dependency where you loaded "my_file.txt".  
+Then navigate to the CDE Jobs UI and create a new CDE Job.
+
+Select Airflow as the Job Type; assign a unique CDE Job name based on your user; select the "airflow_dag.py" script and elect to create a new Files Resource named after yourself in the process. 
+
+Finally, add the Files Resource dependency where you loaded "my_file.txt".  
 
 ![alt text](../../img/part3-cdeairflowjob-1.png)
 

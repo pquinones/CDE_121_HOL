@@ -49,7 +49,7 @@ from airflow.providers.amazon.aws.operators.s3 import S3ListOperator, S3CreateBu
 from airflow.operators.bash import BashOperator
 import pendulum
 
-username = "user002" # Enter your username here
+username = "user003" # Enter your username here
 bucket_name = "eastbucket-" + username
 dag_name = "BankFraud-future-"+username
 
@@ -91,7 +91,7 @@ list_bucket  = S3ListOperator(
 
 read_conf = BashOperator(
     	task_id="read_conf",
-    	bash_command="cat /app/mount/holairflowresource/my_file.txt",
+    	bash_command="cat /app/mount/CDE_repo_user_002/my_file.txt",
         do_xcom_push=True,
         dag=dag
 	)
