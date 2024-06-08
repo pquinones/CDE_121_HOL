@@ -38,17 +38,24 @@ The Airflow DAG script is available in the [CDE Airflow Jobs folder in the HOL g
 
 Git repositories allow teams to collaborate, manage project artifacts, and promote applications from lower to higher environments. CDE supports integration with Git providers such as GitHub, GitLab, and Bitbucket to synchronize job runs with different versions of your code.
 
-In this step you will create a CDE Repository in order to clone the PySpark scripts containing the Applicatio Code for your CDE Spark Job.
+In this step you will create a CDE Repository in order to clone the PySpark scripts containing the Application Code for your CDE Spark Job.
 
-From the Main Page click on "Repositories" and then the "Create Repository" blue icon. Use the following parameters for the form:
+From the Main Page click on "Repositories" and then the "Create Repository" blue icon. 
+
+![alt text](../../img/part3-repos-1.png)
+
+Use the following parameters for the form:
 
 ```
 Repository Name: CDE_Repo_userxxx
 URL: https://github.com/pdefusco/CDE_121_HOL.git
 Branch: main
 ```
+![alt text](../../img/part3-repos-2.png)
 
 All files from the git repository are now stored in CDE as a CDE Repository. Each participant will have their own CDE repository.
+
+![alt text](../../img/part3-repos-3.png)
 
 ##### Create CDE Files Resource
 
