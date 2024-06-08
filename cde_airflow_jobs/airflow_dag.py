@@ -49,8 +49,8 @@ from airflow.providers.amazon.aws.operators.s3 import S3ListOperator, S3CreateBu
 from airflow.operators.bash import BashOperator
 import pendulum
 
-username = "user003" # Enter your username here
-bucket_name = "eastbucket-" + username
+username = "user100" # Enter your username here
+bucket_name = "external-bucket" + username
 dag_name = "BankFraud-future-"+username
 
 print("Using DAG Name: {}".format(dag_name))
@@ -79,7 +79,7 @@ create_bucket = S3CreateBucketOperator(
     bucket_name=bucket_name,
     dag=dag,
     aws_conn_id='s3_default',
-    region_name='us-east-2'
+    region_name='us-east-1'
 )
 
 list_bucket  = S3ListOperator(
@@ -91,7 +91,7 @@ list_bucket  = S3ListOperator(
 
 read_conf = BashOperator(
     	task_id="read_conf",
-    	bash_command="cat /app/mount/CDE_repo_user_002/my_file.txt",
+    	bash_command="cat /app/mount/CDE_Repo_user100/cde_airflow_jobs/my_file.txt",
         do_xcom_push=True,
         dag=dag
 	)
@@ -109,21 +109,21 @@ create_object = S3CreateObjectOperator(
 bronze = CDEJobRunOperator(
         task_id='data-ingestion',
         dag=dag,
-        job_name='01_Lakehouse_Bronze_'+username, #Must match name of CDE Spark Job in the CDE Jobs UI
+        job_name='001_Lakehouse_Bronze_'+username, #Must match name of CDE Spark Job in the CDE Jobs UI
         trigger_rule='all_success',
         )
 
 silver = CDEJobRunOperator(
         task_id='iceberg-merge-branch',
         dag=dag,
-        job_name='02_Lakehouse_Silver_'+username, #Must match name of CDE Spark Job in the CDE Jobs UI
+        job_name='002_Lakehouse_Silver_'+username, #Must match name of CDE Spark Job in the CDE Jobs UI
         trigger_rule='all_success',
         )
 
 gold = CDEJobRunOperator(
         task_id='gold-layer',
         dag=dag,
-        job_name='03_Lakehouse_Gold_'+username, #Must match name of CDE Spark Job in the CDE Jobs UI
+        job_name='003_Lakehouse_Gold_'+username, #Must match name of CDE Spark Job in the CDE Jobs UI
         trigger_rule='all_success',
         )
 

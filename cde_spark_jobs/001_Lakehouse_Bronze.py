@@ -137,4 +137,4 @@ trxBatchDf.write.format("iceberg").option("branch", "ingestion_branch").mode("ap
 spark.sql("SELECT COUNT(*) FROM spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0};".format(username)).show()
 
 # If you want to access the data in the branch, you can specify the branch name in your SELECT query.
-spark.sql("SELECT COUNT(*) FROM spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0} VERSION AS OF 'ingestion_branch';".format(username)).show()
+spark.sql("SELECT * FROM spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0} VERSION AS OF 'ingestion_branch';".format(username)).show()

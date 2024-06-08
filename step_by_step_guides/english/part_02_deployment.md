@@ -75,7 +75,7 @@ Enter the following values without quotes into the corresponding fields. Make su
 
 * Job Type: Spark
 * Name: 001_Lakehouse_Bronze.py
-* File: Select from Resource -> "001_Lakehouse_Bronze.py"
+* File: Select from Repository -> "001_Lakehouse_Bronze.py"
 * Arguments: userxxx #e.g. user002
 
 The form should now look similar to this:
