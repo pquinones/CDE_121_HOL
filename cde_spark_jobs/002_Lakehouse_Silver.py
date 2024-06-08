@@ -69,13 +69,13 @@ trxBatchDf = spark.sql("SELECT * FROM spark_catalog.HOL_DB_{0}.TRANSACTIONS_{0} 
 
 # validate the data quality of the sales data with great-expectations
 
-#geTrxBatchDf = SparkDFDataset(trxBatchDf)
+geTrxBatchDf = SparkDFDataset(trxBatchDf)
 
-#geTrxBatchDfValidation = geTrxBatchDf.expect_compound_columns_to_be_unique(["credit_card_number", "credit_card_provider"])
+geTrxBatchDfValidation = geTrxBatchDf.expect_compound_columns_to_be_unique(["credit_card_number", "credit_card_provider"])
 
-#print(f"VALIDATION RESULTS FOR TRANSACTION BATCH DATA:\n{geTrxBatchDfValidation}\n")
-#assert geTrxBatchDfValidation.success, \
-#    "VALIDATION FOR SALES TABLE UNSUCCESSFUL: FOUND DUPLICATES IN [credit_card_number, credit_card_provider]."
+print(f"VALIDATION RESULTS FOR TRANSACTION BATCH DATA:\n{geTrxBatchDfValidation}\n")
+assert geTrxBatchDfValidation.success, \
+    "VALIDATION FOR SALES TABLE UNSUCCESSFUL: FOUND DUPLICATES IN [credit_card_number, credit_card_provider]."
 
 ### MERGE INGESTION BRANCH INTO MAIN TABLE BRANCH
 
